@@ -1,3 +1,8 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import (Ad, AdPhoto, Building, Category, Location, Match,
+                     Message, ModerationAction, Notification, ReturnRequest, Review)
+
+for model in (Ad, AdPhoto, Building, Category, Location, Match, Message,
+              ModerationAction, Notification, ReturnRequest, Review):
+    admin.site.register(model)
