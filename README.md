@@ -5,3 +5,8 @@
 
 ## Стек
 Python, Django, Django REST Framework, SQLite, Bootstrap 5, JavaScript.
+
+
+## Схема базы данных
+
+![Схема БД](docs/db_schema.png)
