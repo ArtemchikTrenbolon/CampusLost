@@ -1,3 +1,16 @@
+from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-# Create your models here.
+
+class User(AbstractUser):
+    class Role(models.TextChoices):
+        USER = 'user', 'Пользователь'
+        MODERATOR = 'moderator', 'Модератор'
+        ADMIN = 'admin', 'Администратор'
+
+    email = models.EmailField('Почта', unique=True)
+    group_name = models.CharField('Учебная группа', max_length=30, blank=True)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.USER)
+
+    def __str__(self):
+        return self.get_full_name() or self.username

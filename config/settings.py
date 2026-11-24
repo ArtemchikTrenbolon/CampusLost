@@ -146,3 +146,5 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'Сервис «Найдено и потеряно» для кампуса',
     'VERSION': '0.1.0',
 }
+
+AUTH_USER_MODEL = 'accounts.User'
