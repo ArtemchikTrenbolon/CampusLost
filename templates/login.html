@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Вход | CampusLost{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-3">Вход</h1>
+        <div id="formError" class="alert alert-danger d-none" style="white-space: pre-line;"></div>
+        <form id="loginForm">
+          <div class="mb-3">
+            <label for="email" class="form-label">Почта</label>
+            <input type="email" class="form-control" id="email" required>
+          </div>
+          <div class="mb-3">
+            <label for="password" class="form-label">Пароль</label>
+            <input type="password" class="form-control" id="password" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Войти</button>
+        </form>
+        <p class="mt-3 mb-0 text-center">Нет аккаунта? <a href="/register/">Зарегистрироваться</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('formError');
+    errorBox.classList.add('d-none');
+    try {
+      const data = await API.request('/auth/login/', {
+        method: 'POST',
+        auth: false,
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      API.setAuth(data.token, data.user);
+      window.location.href = '/';
+    } catch (err) {
+      errorBox.textContent = API.formatError(err);
+      errorBox.classList.remove('d-none');
+    }
+  });
+</script>
+{% endblock %}
