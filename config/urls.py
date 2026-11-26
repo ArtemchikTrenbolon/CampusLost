@@ -11,7 +11,9 @@ urlpatterns = [
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger'),
     path('api/auth/', include('accounts.urls')),
     path('api/', include('ads.urls')),
-
+    path('ads/new/', TemplateView.as_view(template_name='ad_create.html'), name='ad_create_page'),
+    path('ads/<int:pk>/', TemplateView.as_view(template_name='ad_detail.html'), name='ad_detail_page'),
+    
     path('', TemplateView.as_view(template_name='index.html'), name='index'),
     path('login/', TemplateView.as_view(template_name='login.html'), name='login_page'),
     path('register/', TemplateView.as_view(template_name='register.html'), name='register_page'),

@@ -24,7 +24,10 @@ const API = {
 
   // options.auth === false: не отправлять токен (для входа и регистрации)
   async request(path, options = {}) {
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const headers = { ...(options.headers || {}) };
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
     const token = this.getToken();
     if (token && options.auth !== false) {
       headers['Authorization'] = 'Token ' + token;

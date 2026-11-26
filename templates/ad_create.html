@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% block title %}Подать объявление | CampusLost{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-3">Новое объявление</h1>
+        <div id="formError" class="alert alert-danger d-none" style="white-space: pre-line;"></div>
+        <form id="adForm">
+          <div class="mb-3">
+            <div class="btn-group w-100" role="group" aria-label="Тип объявления">
+              <input type="radio" class="btn-check" name="type" id="typeLost" value="lost" checked>
+              <label class="btn btn-outline-danger" for="typeLost">Я потерял</label>
+              <input type="radio" class="btn-check" name="type" id="typeFound" value="found">
+              <label class="btn btn-outline-success" for="typeFound">Я нашёл</label>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="title" class="form-label">Что это за предмет</label>
+            <input type="text" class="form-control" id="title" maxlength="150"
+                   placeholder="Например, студенческий билет или ключи с брелоком" required>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="category" class="form-label">Категория</label>
+              <select class="form-select" id="category" required></select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="eventDate" class="form-label">Дата потери / находки</label>
+              <input type="date" class="form-control" id="eventDate" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="building" class="form-label">Корпус</label>
+              <select class="form-select" id="building" required></select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="location" class="form-label">Место (необязательно)</label>
+              <select class="form-select" id="location"></select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="description" class="form-label">Описание</label>
+            <textarea class="form-control" id="description" rows="4"
+                      placeholder="Приметы: цвет, марка, наклейки, повреждения"></textarea>
+          </div>
+          <div class="mb-3">
+            <label for="photos" class="form-label">Фото (до 5 штук, каждое до 5 МБ)</label>
+            <input type="file" class="form-control" id="photos" accept="image/*" multiple>
+          </div>
+          <button type="submit" class="btn btn-primary w-100" id="submitBtn">Опубликовать</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  if (!API.getToken()) {
+    window.location.href = '/login/';
+  }
+
+  let buildings = [];
+  const categorySel = document.getElementById('category');
+  const buildingSel = document.getElementById('building');
+  const locationSel = document.getElementById('location');
+  const errorBox = document.getElementById('formError');
+
+  function showError(text) {
+    errorBox.textContent = text;
+    errorBox.classList.remove('d-none');
+  }
+
+  function fillLocations() {
+    const building = buildings.find(b => String(b.id) === buildingSel.value);
+    locationSel.innerHTML = '<option value="">Не указано</option>';
+    if (!building) return;
+    building.locations.forEach(l => {
+      locationSel.add(new Option(l.name, l.id));
+    });
+  }
+
+  async function loadReferences() {
+    const [categories, buildingsData] = await Promise.all([
+      API.request('/categories/', { auth: false }),
+      API.request('/buildings/', { auth: false }),
+    ]);
+    buildings = buildingsData;
+    categories.forEach(c => categorySel.add(new Option(c.name, c.id)));
+    buildings.forEach(b => buildingSel.add(new Option(b.name, b.id)));
+    fillLocations();
+  }
+
+  // Нельзя выбрать дату из будущего
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    .toISOString().slice(0, 10);
+  const dateInput = document.getElementById('eventDate');
+  dateInput.max = today;
+  dateInput.value = today;
+
+  buildingSel.addEventListener('change', fillLocations);
+
+  document.getElementById('adForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.classList.add('d-none');
+
+    const files = Array.from(document.getElementById('photos').files);
+    if (files.length > 5) {
+      showError('Можно загрузить не более 5 фото');
+      return;
+    }
+
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+
+    try {
+      const locationValue = locationSel.value;
+      const ad = await API.request('/ads/', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: document.querySelector('input[name="type"]:checked').value,
+          title: document.getElementById('title').value,
+          description: document.getElementById('description').value,
+          category: Number(categorySel.value),
+          building: Number(buildingSel.value),
+          location: locationValue ? Number(locationValue) : null,
+          event_date: dateInput.value,
+        }),
+      });
+
+      let failed = 0;
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('image', file);
+        try {
+          await API.request(`/ads/${ad.id}/photos/`, { method: 'POST', body: formData });
+        } catch (err) {
+          failed += 1;
+        }
+      }
+      if (failed) {
+        alert('Объявление создано, но не все фото удалось загрузить');
+      }
+      window.location.href = `/ads/${ad.id}/`;
+    } catch (err) {
+      showError(API.formatError(err));
+      submitBtn.disabled = false;
+    }
+  });
+
+  loadReferences().catch(() => showError('Не удалось загрузить справочники'));
+</script>
+{% endblock %}
