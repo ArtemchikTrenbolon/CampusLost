@@ -71,7 +71,7 @@ class Ad(models.Model):
 
 class AdPhoto(models.Model):
     ad = models.ForeignKey(Ad, on_delete=models.CASCADE, related_name='photos')
-    image = models.ImageField(upload_to='ads/')
+    image = models.ImageField(upload_to='photos/')
 
 
 class Match(models.Model):

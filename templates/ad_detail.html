@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block title %}Объявление | CampusLost{% endblock %}
+{% block content %}
+<div id="adError" class="alert alert-danger d-none"></div>
+
+<div id="adBox" class="d-none">
+  <div class="mb-2">
+    <span id="adType" class="badge"></span>
+    <span id="adStatus" class="badge"></span>
+  </div>
+  <h1 class="h3" id="adTitle"></h1>
+
+  <div class="row g-4 mt-1">
+    <div class="col-lg-7">
+      <div id="adPhotos" class="row g-2"></div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-5">Категория</dt><dd class="col-7" id="adCategory"></dd>
+            <dt class="col-5">Корпус</dt><dd class="col-7" id="adBuilding"></dd>
+            <dt class="col-5">Место</dt><dd class="col-7" id="adLocation"></dd>
+            <dt class="col-5">Дата</dt><dd class="col-7" id="adDate"></dd>
+            <dt class="col-5">Автор</dt><dd class="col-7" id="adAuthor"></dd>
+            <dt class="col-5">Опубликовано</dt><dd class="col-7 mb-0" id="adCreated"></dd>
+          </dl>
+        </div>
+      </div>
+      <div id="ownerActions" class="mt-3 d-none">
+        <button type="button" class="btn btn-outline-danger btn-sm" id="deleteBtn">Удалить объявление</button>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="h5 mt-4">Описание</h2>
+  <p id="adDescription" style="white-space: pre-line;"></p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const adId = {{ pk }};
+  const TYPE_BADGE = { lost: 'bg-danger', found: 'bg-success' };
+  const STATUS_BADGE = {
+    pending: 'bg-warning text-dark',
+    active: 'bg-primary',
+    in_return: 'bg-info text-dark',
+    returned: 'bg-success',
+    removed: 'bg-secondary',
+  };
+
+  function setText(id, text) {
+    document.getElementById(id).textContent = text || '—';
+  }
+
+  function render(ad) {
+    const typeEl = document.getElementById('adType');
+    typeEl.textContent = ad.type_display;
+    typeEl.className = 'badge ' + (TYPE_BADGE[ad.type] || 'bg-secondary');
+
+    const statusEl = document.getElementById('adStatus');
+    statusEl.textContent = ad.status_display;
+    statusEl.className = 'badge ' + (STATUS_BADGE[ad.status] || 'bg-secondary');
+
+    setText('adTitle', ad.title);
+    setText('adCategory', ad.category_name);
+    setText('adBuilding', ad.building_name);
+    setText('adLocation', ad.location_name);
+    setText('adDate', new Date(ad.event_date).toLocaleDateString('ru-RU'));
+    setText('adAuthor', ad.author_name);
+    setText('adCreated', new Date(ad.created_at).toLocaleString('ru-RU'));
+    setText('adDescription', ad.description);
+    document.title = ad.title + ' | CampusLost';
+
+    const photosBox = document.getElementById('adPhotos');
+    photosBox.innerHTML = '';
+    if (ad.photos.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'col-12';
+      empty.innerHTML = '<div class="border rounded text-center text-muted py-5">Фото не добавлено</div>';
+      photosBox.appendChild(empty);
+    }
+    ad.photos.forEach(photo => {
+      const col = document.createElement('div');
+      col.className = ad.photos.length === 1 ? 'col-12' : 'col-6';
+      const img = document.createElement('img');
+      img.src = photo.image;
+      img.alt = ad.title;
+      img.className = 'img-fluid rounded border';
+      col.appendChild(img);
+      photosBox.appendChild(col);
+    });
+
+    // Кнопки управления видны автору и модераторам
+    const user = API.getUser();
+    const canManage = user && (user.id === ad.author || ['moderator', 'admin'].includes(user.role));
+    document.getElementById('ownerActions').classList.toggle('d-none', !canManage);
+
+    document.getElementById('adBox').classList.remove('d-none');
+  }
+
+  async function loadAd() {
+    try {
+      render(await API.request(`/ads/${adId}/`));
+    } catch (err) {
+      const box = document.getElementById('adError');
+      box.textContent = err.status === 404
+        ? 'Объявление не найдено или ещё не прошло модерацию'
+        : API.formatError(err);
+      box.classList.remove('d-none');
+    }
+  }
+
+  document.getElementById('deleteBtn').addEventListener('click', async () => {
+    if (!confirm('Удалить объявление без возможности восстановления?')) return;
+    try {
+      await API.request(`/ads/${adId}/`, { method: 'DELETE' });
+      window.location.href = '/';
+    } catch (err) {
+      alert(API.formatError(err));
+    }
+  });
+
+  loadAd();
+</script>
+{% endblock %}
