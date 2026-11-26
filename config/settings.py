@@ -145,6 +145,7 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'CampusLost API',
     'DESCRIPTION': 'Сервис «Найдено и потеряно» для кампуса',
     'VERSION': '0.1.0',
+    'COMPONENT_SPLIT_REQUEST': True,
 }
 
 AUTH_USER_MODEL = 'accounts.User'

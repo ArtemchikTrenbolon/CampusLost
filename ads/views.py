@@ -1,12 +1,18 @@
 from django.db.models import Q
-from rest_framework import generics, viewsets
+from drf_spectacular.utils import extend_schema
+from rest_framework import generics, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.response import Response
 
 from .models import Ad, Building, Category
 from .permissions import IsAuthorOrModerator
-from .serializers import AdSerializer, BuildingSerializer, CategorySerializer
+from .serializers import (AdPhotoSerializer, AdSerializer, BuildingSerializer,
+                          CategorySerializer)
 
 PUBLIC_STATUSES = [Ad.Status.ACTIVE, Ad.Status.IN_RETURN, Ad.Status.RETURNED]
+MAX_PHOTOS = 5
 
 
 class AdViewSet(viewsets.ModelViewSet):
@@ -31,6 +37,18 @@ class AdViewSet(viewsets.ModelViewSet):
         status = Ad.Status.ACTIVE if user.is_moderator else Ad.Status.PENDING
         serializer.save(author=user, status=status)
 
+    @extend_schema(request=AdPhotoSerializer, responses={201: AdPhotoSerializer})
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def photos(self, request, pk=None):
+        """Загрузить одно фото к объявлению (до 5 штук)."""
+        ad = self.get_object()
+        if ad.photos.count() >= MAX_PHOTOS:
+            return Response({'detail': f'Можно загрузить не более {MAX_PHOTOS} фото'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        serializer = AdPhotoSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(ad=ad)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class CategoryListView(generics.ListAPIView):
     queryset = Category.objects.all()

@@ -29,6 +29,11 @@ class AdPhotoSerializer(serializers.ModelSerializer):
         model = AdPhoto
         fields = ('id', 'image')
 
+    def validate_image(self, value):
+        if value.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError('Файл больше 5 МБ')
+        return value
+
 
 class AdSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
