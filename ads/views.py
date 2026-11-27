@@ -1,12 +1,15 @@
 from django.db.models import Q
-from drf_spectacular.utils import extend_schema
+from django.utils.dateparse import parse_date
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from .models import Ad, Building, Category
+from .pagination import FeedPagination
 from .permissions import IsAuthorOrModerator
 from .serializers import (AdPhotoSerializer, AdSerializer, BuildingSerializer,
                           CategorySerializer)
@@ -14,10 +17,21 @@ from .serializers import (AdPhotoSerializer, AdSerializer, BuildingSerializer,
 PUBLIC_STATUSES = [Ad.Status.ACTIVE, Ad.Status.IN_RETURN, Ad.Status.RETURNED]
 MAX_PHOTOS = 5
 
+FEED_PARAMETERS = [
+    OpenApiParameter('type', str, description='Тип: lost или found'),
+    OpenApiParameter('category', int, description='id категории'),
+    OpenApiParameter('building', int, description='id корпуса'),
+    OpenApiParameter('status', str, description='Статус: active, returned, in_return'),
+    OpenApiParameter('date_from', str, description='Дата потери/находки от (ГГГГ-ММ-ДД)'),
+    OpenApiParameter('date_to', str, description='Дата потери/находки до (ГГГГ-ММ-ДД)'),
+]
 
+
+@extend_schema_view(list=extend_schema(parameters=FEED_PARAMETERS))
 class AdViewSet(viewsets.ModelViewSet):
     serializer_class = AdSerializer
     permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrModerator]
+    pagination_class = FeedPagination
 
     def get_queryset(self):
         qs = (Ad.objects
@@ -31,11 +45,47 @@ class AdViewSet(viewsets.ModelViewSet):
             return qs.filter(public | Q(author=user))
         return qs.filter(public)
 
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        # Фильтры работают только для списка, чтобы не ломать просмотр одного объявления
+        if self.action != 'list':
+            return queryset
+
+        params = self.request.query_params
+
+        ad_type = params.get('type')
+        if ad_type in Ad.Type.values:
+            queryset = queryset.filter(type=ad_type)
+
+        status_value = params.get('status')
+        if status_value in Ad.Status.values:
+            queryset = queryset.filter(status=status_value)
+
+        for param in ('category', 'building'):
+            value = params.get(param)
+            if value:
+                if not value.isdigit():
+                    raise ValidationError({param: 'Должно быть числом'})
+                queryset = queryset.filter(**{f'{param}_id': int(value)})
+
+        for param, lookup in (('date_from', 'event_date__gte'), ('date_to', 'event_date__lte')):
+            value = params.get(param)
+            if value:
+                try:
+                    parsed = parse_date(value)
+                except ValueError:
+                    parsed = None
+                if parsed is None:
+                    raise ValidationError({param: 'Неверная дата, нужен формат ГГГГ-ММ-ДД'})
+                queryset = queryset.filter(**{lookup: parsed})
+
+        return queryset
+
     def perform_create(self, serializer):
         user = self.request.user
         # Объявления модераторов публикуются сразу, остальные идут на проверку
-        status = Ad.Status.ACTIVE if user.is_moderator else Ad.Status.PENDING
-        serializer.save(author=user, status=status)
+        status_value = Ad.Status.ACTIVE if user.is_moderator else Ad.Status.PENDING
+        serializer.save(author=user, status=status_value)
 
     @extend_schema(request=AdPhotoSerializer, responses={201: AdPhotoSerializer})
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
@@ -49,6 +99,7 @@ class AdViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(ad=ad)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class CategoryListView(generics.ListAPIView):
     queryset = Category.objects.all()
