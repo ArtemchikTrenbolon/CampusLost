@@ -24,6 +24,7 @@ FEED_PARAMETERS = [
     OpenApiParameter('status', str, description='Статус: active, returned, in_return'),
     OpenApiParameter('date_from', str, description='Дата потери/находки от (ГГГГ-ММ-ДД)'),
     OpenApiParameter('date_to', str, description='Дата потери/находки до (ГГГГ-ММ-ДД)'),
+    OpenApiParameter('q', str, description='Поиск по названию, описанию, категории, месту'),
 ]
 
 
@@ -78,6 +79,21 @@ class AdViewSet(viewsets.ModelViewSet):
                 if parsed is None:
                     raise ValidationError({param: 'Неверная дата, нужен формат ГГГГ-ММ-ДД'})
                 queryset = queryset.filter(**{lookup: parsed})
+
+        # Поиск по ключевым словам (в Python, потому что SQLite не понимает регистр кириллицы)
+        q = params.get('q', '').strip().lower()
+        if q:
+            words = q.split()
+
+            def haystack(ad):
+                parts = [
+                    ad.title, ad.description, ad.category.name,
+                    ad.building.name, ad.location.name if ad.location else '',
+                ]
+                return ' '.join(parts).lower()
+
+            ids = [ad.id for ad in queryset if all(word in haystack(ad) for word in words)]
+            queryset = queryset.filter(id__in=ids)
 
         return queryset
 
