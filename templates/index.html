@@ -1,6 +1,195 @@
 {% extends 'base.html' %}
 {% block title %}Лента объявлений | CampusLost{% endblock %}
 {% block content %}
-  <h1 class="h3">Лента объявлений</h1>
-  <p class="text-muted">Здесь скоро появятся объявления «потерял» и «нашёл».</p>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">Лента объявлений</h1>
+  <a href="/ads/new/" class="btn btn-primary auth-only d-none">Подать объявление</a>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form id="filterForm" class="row g-3">
+      <div class="col-12 col-lg-4">
+        <label for="q" class="form-label">Поиск</label>
+        <input type="search" class="form-control" id="q" placeholder="Ключи, наушники, куртка">
+      </div>
+      <div class="col-6 col-lg-2">
+        <label for="type" class="form-label">Тип</label>
+        <select class="form-select" id="type">
+          <option value="">Все</option>
+          <option value="lost">Потеряно</option>
+          <option value="found">Найдено</option>
+        </select>
+      </div>
+      <div class="col-6 col-lg-3">
+        <label for="category" class="form-label">Категория</label>
+        <select class="form-select" id="category"><option value="">Все</option></select>
+      </div>
+      <div class="col-6 col-lg-3">
+        <label for="building" class="form-label">Корпус</label>
+        <select class="form-select" id="building"><option value="">Все</option></select>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label for="status" class="form-label">Статус</label>
+        <select class="form-select" id="status">
+          <option value="active" selected>Активные</option>
+          <option value="returned">Возвращённые</option>
+          <option value="">Любой</option>
+        </select>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label for="date_from" class="form-label">Дата от</label>
+        <input type="date" class="form-control" id="date_from">
+      </div>
+      <div class="col-6 col-lg-2">
+        <label for="date_to" class="form-label">Дата до</label>
+        <input type="date" class="form-control" id="date_to">
+      </div>
+      <div class="col-12 col-lg-2 d-flex align-items-end">
+        <button type="reset" class="btn btn-outline-secondary w-100" id="resetBtn">Сбросить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="feedError" class="alert alert-danger d-none"></div>
+<p class="text-muted" id="adsCount"></p>
+
+<div id="adsList" class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4"></div>
+<div id="pager" class="d-flex justify-content-center mt-4"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PAGE_SIZE = 9;
+  const TYPE_BADGE = { lost: 'bg-danger', found: 'bg-success' };
+  const STATUS_BADGE = {
+    pending: 'bg-warning text-dark',
+    active: 'bg-primary',
+    in_return: 'bg-info text-dark',
+    returned: 'bg-success',
+    removed: 'bg-secondary',
+  };
+  // id полей формы совпадают с названиями параметров API
+  const FILTER_FIELDS = ['q', 'type', 'category', 'building', 'status', 'date_from', 'date_to'];
+
+  const listBox = document.getElementById('adsList');
+  const counter = document.getElementById('adsCount');
+  const pager = document.getElementById('pager');
+  const errorBox = document.getElementById('feedError');
+
+  function escapeHtml(text) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(text ?? '').replace(/[&<>"']/g, ch => map[ch]);
+  }
+
+  function cardHtml(ad) {
+    const photo = ad.photos.length
+      ? `<img src="${escapeHtml(ad.photos[0].image)}" class="card-img-top ad-card-img"
+              alt="${escapeHtml(ad.title)}" loading="lazy">`
+      : '<div class="ad-card-img ad-card-noimg">Нет фото</div>';
+
+    return `
+      <div class="col">
+        <div class="card ad-card h-100 shadow-sm">
+          ${photo}
+          <div class="card-body d-flex flex-column">
+            <div class="mb-2">
+              <span class="badge ${TYPE_BADGE[ad.type] || 'bg-secondary'}">${escapeHtml(ad.type_display)}</span>
+              <span class="badge ${STATUS_BADGE[ad.status] || 'bg-secondary'}">${escapeHtml(ad.status_display)}</span>
+            </div>
+            <h2 class="h6 card-title">
+              <a href="/ads/${ad.id}/" class="stretched-link text-decoration-none text-dark">${escapeHtml(ad.title)}</a>
+            </h2>
+            <p class="card-text small text-muted ad-card-text">${escapeHtml(ad.description)}</p>
+            <div class="small text-muted mt-auto">
+              <div>${escapeHtml(ad.category_name)} · ${escapeHtml(ad.building_name)}</div>
+              <div>${new Date(ad.event_date).toLocaleDateString('ru-RU')}</div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function renderAds(ads) {
+    if (ads.length === 0) {
+      listBox.innerHTML = `
+        <div class="col-12">
+          <div class="text-center text-muted py-5">По вашему запросу ничего не найдено. Попробуйте изменить фильтры.</div>
+        </div>`;
+      return;
+    }
+    listBox.innerHTML = ads.map(cardHtml).join('');
+  }
+
+  function renderPager(data, page) {
+    const pages = Math.ceil(data.count / PAGE_SIZE);
+    if (pages <= 1) {
+      pager.innerHTML = '';
+      return;
+    }
+    pager.innerHTML = `
+      <button type="button" class="btn btn-outline-primary" data-page="${page - 1}" ${data.previous ? '' : 'disabled'}>← Назад</button>
+      <span class="mx-3 align-self-center text-muted">Страница ${page} из ${pages}</span>
+      <button type="button" class="btn btn-outline-primary" data-page="${page + 1}" ${data.next ? '' : 'disabled'}>Вперёд →</button>`;
+    pager.querySelectorAll('button[data-page]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        loadAds(Number(btn.dataset.page));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+  }
+
+  function buildParams(page) {
+    const params = new URLSearchParams({ page, page_size: PAGE_SIZE });
+    FILTER_FIELDS.forEach(name => {
+      const value = document.getElementById(name).value.trim();
+      if (value) params.set(name, value);
+    });
+    return params;
+  }
+
+  async function loadAds(page = 1) {
+    errorBox.classList.add('d-none');
+    try {
+      // Лента публичная, поэтому токен не отправляем
+      const data = await API.request('/ads/?' + buildParams(page).toString(), { auth: false });
+      renderAds(data.results);
+      renderPager(data, page);
+      counter.textContent = `Найдено: ${data.count}`;
+    } catch (err) {
+      errorBox.textContent = API.formatError(err);
+      errorBox.classList.remove('d-none');
+    }
+  }
+
+  async function init() {
+    try {
+      const [categories, buildings] = await Promise.all([
+        API.request('/categories/', { auth: false }),
+        API.request('/buildings/', { auth: false }),
+      ]);
+      const categorySel = document.getElementById('category');
+      const buildingSel = document.getElementById('building');
+      categories.forEach(c => categorySel.add(new Option(c.name, c.id)));
+      buildings.forEach(b => buildingSel.add(new Option(b.name, b.id)));
+    } catch (err) {
+      // справочники не загрузились, лента всё равно работает без этих фильтров
+    }
+    loadAds(1);
+  }
+
+  const form = document.getElementById('filterForm');
+  form.addEventListener('submit', e => e.preventDefault());
+  form.addEventListener('change', () => loadAds(1));
+  document.getElementById('resetBtn').addEventListener('click', () => setTimeout(() => loadAds(1), 0));
+
+  let searchTimer;
+  document.getElementById('q').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadAds(1), 300);
+  });
+
+  init();
+</script>
 {% endblock %}
