@@ -5,14 +5,14 @@ from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
-from .models import Ad, Building, Category
+from .models import Ad, Building, Category, Match
 from .pagination import FeedPagination
 from .permissions import IsAuthorOrModerator
 from .serializers import (AdPhotoSerializer, AdSerializer, BuildingSerializer,
-                          CategorySerializer)
+                          CategorySerializer, MatchSerializer)
 
 PUBLIC_STATUSES = [Ad.Status.ACTIVE, Ad.Status.IN_RETURN, Ad.Status.RETURNED]
 MAX_PHOTOS = 5
@@ -115,6 +115,28 @@ class AdViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(ad=ad)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses=MatchSerializer(many=True))
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def matches(self, request, pk=None):
+        """Подходящие объявления противоположного типа (видны автору и модераторам)."""
+        ad = self.get_object()
+        user = request.user
+        if ad.author_id != user.id and not user.is_moderator:
+            return Response({'detail': 'Совпадения видны только автору объявления'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        own, other = ('lost_ad', 'found_ad') if ad.type == Ad.Type.LOST else ('found_ad', 'lost_ad')
+        queryset = (Match.objects
+                    .filter(**{own: ad, f'{other}__status': Ad.Status.ACTIVE})
+                    .exclude(status=Match.Status.DISMISSED)
+                    .select_related(f'{other}__category', f'{other}__building',
+                                    f'{other}__location', f'{other}__author')
+                    .prefetch_related(f'{other}__photos')
+                    .order_by('-score'))
+        serializer = MatchSerializer(queryset, many=True,
+                                     context={'request': request, 'own_type': ad.type})
+        return Response(serializer.data)
 
 
 class CategoryListView(generics.ListAPIView):

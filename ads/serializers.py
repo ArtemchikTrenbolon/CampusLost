@@ -1,7 +1,7 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Ad, AdPhoto, Building, Category, Location
+from .models import Ad, AdPhoto, Building, Category, Location, Match
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -75,3 +75,16 @@ class AdSerializer(serializers.ModelSerializer):
         if building and location and location.building_id != building.id:
             raise serializers.ValidationError({'location': 'Это место находится в другом корпусе'})
         return attrs
+
+
+class MatchSerializer(serializers.ModelSerializer):
+    ad = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Match
+        fields = ('id', 'score', 'status', 'ad')
+
+    def get_ad(self, obj) -> dict:
+        # Показываем «противоположное» объявление относительно того, для которого ищем
+        other = obj.found_ad if self.context['own_type'] == Ad.Type.LOST else obj.lost_ad
+        return AdSerializer(other, context=self.context).data
