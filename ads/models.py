@@ -89,6 +89,8 @@ class Match(models.Model):
     class Meta:
         unique_together = ('lost_ad', 'found_ad')
 
+    def __str__(self):
+        return f'{self.lost_ad_id} ↔ {self.found_ad_id} ({self.score}%)'
 
 class ReturnRequest(models.Model):
     class Status(models.TextChoices):
